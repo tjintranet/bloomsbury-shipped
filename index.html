@@ -1,0 +1,1415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Order File Parser</title>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.11.1/font/bootstrap-icons.min.css" rel="stylesheet">
+<style>
+/* ── Fonts ─────────────────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
+
+/* ── Design tokens ──────────────────────────────────────────────── */
+:root {
+    --bg:           #0f1117;
+    --surface:      #181c27;
+    --surface-2:    #1e2435;
+    --surface-3:    #252b3d;
+    --border:       #333d57;
+    --border-light: #44527a;
+    --accent:       #5b9fd4;
+    --accent-dim:   #3a6fa0;
+    --accent-glow:  rgba(91,159,212,0.15);
+    --text:         #edf0f7;
+    --text-dim:     #a8b4cc;
+    --text-faint:   #6e7f9e;
+    --success:      #4dc48a;
+    --warning:      #f0b040;
+    --danger:       #e07070;
+    --purple:       #a98fe0;
+    --mono:         'IBM Plex Mono', monospace;
+    --sans:         'IBM Plex Sans', sans-serif;
+    --radius:       4px;
+    --radius-lg:    8px;
+}
+
+/* ── Reset & base ───────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 16px; }
+body {
+    font-family: var(--sans);
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    line-height: 1.5;
+}
+
+a { color: var(--accent); }
+
+/* ── Layout ─────────────────────────────────────────────────────── */
+.app-shell {
+    display: grid;
+    grid-template-rows: auto 1fr;
+    min-height: 100vh;
+}
+
+.app-header {
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    padding: 0 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 56px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+.app-header-left {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.app-title {
+    font-family: var(--sans);
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: var(--text);
+    letter-spacing: 0.01em;
+}
+
+.app-subtitle {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    color: var(--text-faint);
+    letter-spacing: 0.04em;
+}
+
+.app-body {
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    gap: 0;
+    align-items: start;
+}
+
+/* ── Sidebar ─────────────────────────────────────────────────────── */
+.sidebar {
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    min-height: calc(100vh - 56px);
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    position: sticky;
+    top: 56px;
+    height: calc(100vh - 56px);
+    overflow-y: auto;
+}
+
+.sidebar-section {
+    padding: 1.25rem 1.5rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.sidebar-label {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 0.75rem;
+}
+
+/* ── Drop zone ───────────────────────────────────────────────────── */
+.drop-zone {
+    border: 1px dashed var(--border-light);
+    border-radius: var(--radius-lg);
+    padding: 1.5rem 1rem;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    background: var(--bg);
+}
+
+.drop-zone:hover,
+.drop-zone.drag-over {
+    border-color: var(--accent);
+    background: var(--accent-glow);
+}
+
+.drop-zone-icon {
+    font-size: 1.75rem;
+    color: var(--text-faint);
+    display: block;
+    margin-bottom: 0.5rem;
+    transition: color 0.2s;
+}
+
+.drop-zone:hover .drop-zone-icon,
+.drop-zone.drag-over .drop-zone-icon {
+    color: var(--accent);
+}
+
+.drop-zone-text {
+    font-size: 0.875rem;
+    color: var(--text-dim);
+    line-height: 1.4;
+}
+
+.drop-zone-text strong {
+    color: var(--text);
+    display: block;
+    margin-bottom: 0.2rem;
+}
+
+/* ── Status alert ────────────────────────────────────────────────── */
+.status-alert {
+    display: none;
+    padding: 0.6rem 0.85rem;
+    border-radius: var(--radius);
+    font-size: 0.875rem;
+    gap: 0.5rem;
+    align-items: flex-start;
+    line-height: 1.4;
+    margin-top: 0.75rem;
+}
+
+.status-alert.visible { display: flex; }
+.status-alert.success { background: rgba(58,170,110,0.12); border: 1px solid rgba(58,170,110,0.3); color: #6dcc9b; }
+.status-alert.warning { background: rgba(232,160,48,0.12); border: 1px solid rgba(232,160,48,0.3); color: #f0bc6e; }
+.status-alert.error   { background: rgba(217,95,95,0.12);  border: 1px solid rgba(217,95,95,0.3);  color: #f08080; }
+
+/* ── Stats grid ──────────────────────────────────────────────────── */
+.stats-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
+}
+
+.stat-cell {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0.6rem 0.75rem;
+}
+
+.stat-label {
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 0.2rem;
+}
+
+.stat-value {
+    font-family: var(--mono);
+    font-size: 1.4rem;
+    font-weight: 600;
+    color: var(--accent);
+    line-height: 1;
+}
+
+/* ── Buttons ─────────────────────────────────────────────────────── */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.5rem 0.9rem;
+    border-radius: var(--radius);
+    font-family: var(--sans);
+    font-size: 0.875rem;
+    font-weight: 500;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: all 0.15s;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+
+.btn-primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+}
+.btn-primary:hover:not(:disabled) {
+    background: #4d8fd0;
+    border-color: #4d8fd0;
+}
+
+.btn-ghost {
+    background: transparent;
+    border-color: var(--border-light);
+    color: var(--text-dim);
+}
+.btn-ghost:hover:not(:disabled) {
+    border-color: var(--text-dim);
+    color: var(--text);
+}
+
+.btn-icon {
+    padding: 0.35rem 0.5rem;
+    background: transparent;
+    border-color: var(--border);
+    color: var(--text-faint);
+}
+.btn-icon:hover:not(:disabled) {
+    border-color: var(--border-light);
+    color: var(--text-dim);
+}
+
+.btn-row {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+.btn-row .btn { width: 100%; justify-content: center; }
+
+/* ── Processing spinner ──────────────────────────────────────────── */
+.processing {
+    display: none;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.8rem;
+    color: var(--text-dim);
+    margin-top: 0.75rem;
+}
+.processing.visible { display: flex; }
+
+.spinner {
+    width: 14px;
+    height: 14px;
+    border: 2px solid var(--border-light);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Main content ────────────────────────────────────────────────── */
+.main-content {
+    padding: 1.5rem;
+    min-height: calc(100vh - 56px);
+}
+
+/* ── Empty state ─────────────────────────────────────────────────── */
+.empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 400px;
+    text-align: center;
+    gap: 1rem;
+}
+
+.empty-state-icon {
+    font-size: 3rem;
+    color: var(--text-faint);
+    opacity: 0.4;
+}
+
+.empty-state-title {
+    font-family: var(--mono);
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    letter-spacing: 0.05em;
+}
+
+.empty-state-sub {
+    font-size: 0.8rem;
+    color: var(--text-faint);
+    max-width: 320px;
+    line-height: 1.5;
+}
+
+/* ── Order cards ─────────────────────────────────────────────────── */
+.orders-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.order-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    transition: border-color 0.15s;
+    animation: slideIn 0.25s ease both;
+    scroll-margin-top: 100px;
+}
+
+@keyframes slideIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+.order-card:hover {
+    border-color: var(--border-light);
+}
+
+.order-card-header {
+    padding: 0.85rem 1.1rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    user-select: none;
+    border-bottom: 1px solid transparent;
+    transition: background 0.15s, border-color 0.15s;
+}
+
+.order-card-header:hover {
+    background: var(--surface-2);
+}
+
+.order-card.open .order-card-header {
+    border-bottom-color: var(--border);
+    background: var(--surface-2);
+}
+
+.order-chevron {
+    font-size: 0.75rem;
+    color: var(--text-faint);
+    transition: transform 0.2s;
+    flex-shrink: 0;
+}
+
+.order-card.open .order-chevron {
+    transform: rotate(90deg);
+}
+
+.order-header-main {
+    flex: 1;
+    display: flex;
+    align-items: baseline;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    min-width: 0;
+}
+
+.order-number {
+    font-family: var(--mono);
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text);
+}
+
+.order-date {
+    font-family: var(--mono);
+    font-size: 0.85rem;
+    color: var(--text-dim);
+}
+
+.badge-row {
+    display: flex;
+    gap: 0.35rem;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.badge {
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 0.2rem 0.5rem;
+    border-radius: 3px;
+    white-space: nowrap;
+}
+
+.badge-blue     { background: rgba(91,159,212,0.2);  color: #7dc0f0; border: 1px solid rgba(91,159,212,0.4); }
+.badge-slate    { background: rgba(168,180,204,0.15); color: #b8c4d8; border: 1px solid rgba(168,180,204,0.3); }
+.badge-amber    { background: rgba(240,176,64,0.18);  color: #f0c060; border: 1px solid rgba(240,176,64,0.35); }
+.badge-purple   { background: rgba(169,143,224,0.2);  color: #c8b0f0; border: 1px solid rgba(169,143,224,0.4); }
+
+.order-header-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    flex-shrink: 0;
+}
+
+.meta-chip {
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+/* ── Order detail ────────────────────────────────────────────────── */
+.order-card-body {
+    display: none;
+    padding: 1.25rem 1.1rem;
+}
+
+.order-card.open .order-card-body {
+    display: block;
+}
+
+.detail-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-bottom: 1.25rem;
+}
+
+.detail-block {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0.85rem 1rem;
+}
+
+.detail-block-full {
+    grid-column: 1 / -1;
+}
+
+.detail-block-label {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 0.6rem;
+    padding-bottom: 0.4rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.detail-row {
+    display: flex;
+    gap: 0.5rem;
+    padding: 0.25rem 0;
+    font-size: 0.9rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.detail-row:last-child { border-bottom: none; }
+
+.detail-key {
+    color: var(--text-dim);
+    min-width: 115px;
+    flex-shrink: 0;
+    font-family: var(--mono);
+    font-size: 0.8rem;
+}
+
+.detail-val {
+    color: var(--text);
+    font-weight: 500;
+    word-break: break-word;
+}
+
+.detail-address {
+    font-size: 0.9rem;
+    line-height: 1.75;
+    color: var(--text);
+}
+
+.detail-address .country-badge {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    padding: 0.1rem 0.4rem;
+    border-radius: 2px;
+    background: var(--surface-3);
+    border: 1px solid var(--border-light);
+    color: var(--text);
+    vertical-align: middle;
+}
+
+.detail-address .phone-line {
+    color: var(--text-dim);
+    font-family: var(--mono);
+    font-size: 0.82rem;
+}
+
+/* ── Lines table ─────────────────────────────────────────────────── */
+.lines-table-wrap {
+    overflow-x: auto;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+}
+
+table.lines-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+
+.lines-table thead tr {
+    background: var(--surface-3);
+    border-bottom: 1px solid var(--border-light);
+}
+
+.lines-table th {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    padding: 0.6rem 0.9rem;
+    text-align: left;
+    white-space: nowrap;
+}
+
+.lines-table th.right,
+.lines-table td.right { text-align: right; }
+
+.lines-table tbody tr {
+    border-bottom: 1px solid var(--border);
+    transition: background 0.1s;
+}
+
+.lines-table tbody tr:last-child { border-bottom: none; }
+
+.lines-table tbody tr:hover { background: var(--surface-2); }
+
+.lines-table td {
+    padding: 0.6rem 0.85rem;
+    color: var(--text);
+    vertical-align: middle;
+}
+
+.lines-table tfoot tr {
+    background: var(--surface-3);
+    border-top: 1px solid var(--border-light);
+}
+
+.lines-table tfoot td {
+    font-weight: 600;
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    color: var(--text-dim);
+    padding: 0.6rem 0.9rem;
+}
+
+.isbn-pill {
+    font-family: var(--mono);
+    font-size: 0.85rem;
+    background: var(--surface-3);
+    border: 1px solid var(--border-light);
+    color: var(--text);
+    padding: 0.15rem 0.45rem;
+    border-radius: 3px;
+    letter-spacing: 0.02em;
+}
+
+.seq-num {
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    color: var(--text-dim);
+}
+
+.ref-text {
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    color: var(--text-dim);
+}
+
+.price-val {
+    font-family: var(--mono);
+    font-size: 0.9rem;
+}
+
+.qty-val {
+    font-family: var(--mono);
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--accent);
+}
+
+.qty-ship-val {
+    font-family: var(--mono);
+    font-size: 0.9rem;
+    color: var(--text-dim);
+}
+
+.qty-ship-val.dispatched { color: var(--success); }
+
+.total-val {
+    font-family: var(--mono);
+    font-size: 0.9rem;
+    color: var(--text-dim);
+}
+
+/* ── Card footer row ─────────────────────────────────────────────── */
+.card-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    margin-top: 1rem;
+    padding-top: 0.85rem;
+    border-top: 1px solid var(--border);
+}
+
+/* ── Scrollbar ───────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-faint); }
+
+/* ── Responsive ──────────────────────────────────────────────────── */
+@media (max-width: 860px) {
+    .app-body { grid-template-columns: 1fr; }
+    .sidebar { position: static; height: auto; min-height: auto; border-right: none; border-bottom: 1px solid var(--border); }
+    .detail-grid { grid-template-columns: 1fr; }
+}
+
+/* ── Expand / Collapse toolbar ───────────────────────────────────── */
+.expand-collapse-bar {
+    position: sticky;
+    top: 56px;
+    z-index: 50;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    padding: 0.5rem 1.5rem;
+    margin: 0 -1.5rem 1.25rem -1.5rem;
+    display: flex;
+    gap: 0.5rem;
+    justify-content: flex-end;
+}
+
+.btn-xs {
+    padding: 0.25rem 0.6rem;
+    font-size: 0.78rem;
+}
+
+/* ── Search bar ──────────────────────────────────────────────────── */
+.search-wrap {
+    position: relative;
+}
+
+.search-input {
+    width: 100%;
+    background: var(--surface-3);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius);
+    color: var(--text);
+    padding: 0.45rem 2rem 0.45rem 0.7rem;
+    font-size: 0.875rem;
+    font-family: var(--mono);
+    outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.search-input::placeholder { color: var(--text-faint); font-family: var(--sans); }
+
+.search-input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(91,159,212,0.2);
+}
+
+.search-clear {
+    position: absolute;
+    right: 0.4rem;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    color: var(--text-faint);
+    cursor: pointer;
+    padding: 0.1rem 0.2rem;
+    font-size: 0.8rem;
+    display: none;
+    line-height: 1;
+}
+
+.search-clear.visible { display: block; }
+.search-clear:hover { color: var(--text-dim); }
+
+.search-no-results {
+    display: none;
+    font-size: 0.8rem;
+    color: var(--text-faint);
+    text-align: center;
+    padding: 0.4rem 0;
+    margin-top: 0.4rem;
+}
+
+.search-no-results.visible { display: block; }
+
+.order-card.search-hidden { display: none; }
+.order-card.search-highlight .order-card-header { background: var(--accent-glow) !important; border-color: var(--accent); }
+</style>
+
+<!-- Favicon -->
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
+<link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+
+</head>
+<body>
+
+<div class="app-shell">
+
+    <!-- Header -->
+    <header class="app-header">
+        <div class="app-header-left">
+            <div>
+                <div class="app-title">Order File Parser</div>
+                <div class="app-subtitle">Fixed-width EDI · PO_TJ_*.txt</div>
+            </div>
+        </div>
+    </header>
+
+    <div class="app-body">
+
+        <!-- Sidebar -->
+        <aside class="sidebar">
+
+            <!-- Upload -->
+            <div class="sidebar-section">
+                <div class="sidebar-label">Upload</div>
+                <div class="drop-zone" id="dropZone">
+                    <i class="bi bi-file-earmark-arrow-up drop-zone-icon"></i>
+                    <div class="drop-zone-text">
+                        <strong>Drop order files here</strong>
+                        Click to browse · .txt · Multiple files
+                    </div>
+                    <input type="file" id="fileInput" accept=".txt" multiple style="display:none">
+                </div>
+
+                <div class="processing" id="processingIndicator">
+                    <div class="spinner"></div>
+                    <span>Parsing files…</span>
+                </div>
+
+                <div class="status-alert" id="statusAlert">
+                    <i class="bi bi-info-circle-fill" id="statusIcon" style="flex-shrink:0;margin-top:1px"></i>
+                    <span id="statusText"></span>
+                </div>
+            </div>
+
+            <!-- Stats -->
+            <div class="sidebar-section" id="statsSection" style="display:none">
+                <div class="sidebar-label">Summary</div>
+                <div class="stats-grid">
+                    <div class="stat-cell">
+                        <div class="stat-label">Files</div>
+                        <div class="stat-value" id="statFiles">0</div>
+                    </div>
+                    <div class="stat-cell">
+                        <div class="stat-label">Orders</div>
+                        <div class="stat-value" id="statOrders">0</div>
+                    </div>
+                    <div class="stat-cell">
+                        <div class="stat-label">Lines</div>
+                        <div class="stat-value" id="statLines">0</div>
+                    </div>
+                    <div class="stat-cell">
+                        <div class="stat-label">Total Qty</div>
+                        <div class="stat-value" id="statQty">0</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Actions -->
+            <div class="sidebar-section">
+                <div class="sidebar-label">Actions</div>
+                <div class="btn-row">
+                    <button class="btn btn-ghost" id="downloadBtn" disabled>
+                        <i class="bi bi-download"></i> Download Report
+                    </button>
+                    <button class="btn btn-ghost" id="clearBtn" disabled>
+                        <i class="bi bi-trash3"></i> Clear All
+                    </button>
+                </div>
+            </div>
+
+            <!-- Legend -->
+            <div class="sidebar-section">
+                <div class="sidebar-label">Address Types</div>
+                <div style="display:flex;flex-direction:column;gap:0.5rem;font-size:0.875rem;color:var(--text-dim)">
+                    <div><span style="font-family:var(--mono);color:var(--text-faint);min-width:32px;display:inline-block">ST</span> Ship-To</div>
+                    <div><span style="font-family:var(--mono);color:var(--text-faint);min-width:32px;display:inline-block">BP</span> Bill-To</div>
+                    <div><span style="font-family:var(--mono);color:var(--text-faint);min-width:32px;display:inline-block">CS</span> Consolidator</div>
+                </div>
+            </div>
+
+        </aside>
+
+        <!-- Main -->
+        <main class="main-content">
+            <div id="expandCollapseBar" style="display:none" class="expand-collapse-bar">
+                <div class="search-wrap" style="flex:1;max-width:340px;margin-right:auto">
+                    <input class="search-input" id="orderSearch" type="text" placeholder="Search order ID…" oninput="searchOrders(this.value)">
+                    <button class="search-clear" id="searchClear" onclick="clearSearch()" title="Clear search">×</button>
+                </div>
+                <div id="searchNoResults" class="search-no-results">No orders match</div>
+                <button class="btn btn-ghost btn-xs" onclick="expandAll()">
+                    <i class="bi bi-arrows-expand"></i> Expand All
+                </button>
+                <button class="btn btn-ghost btn-xs" onclick="collapseAll()">
+                    <i class="bi bi-arrows-collapse"></i> Collapse All
+                </button>
+            </div>
+            <div id="resultsArea">
+                <div class="empty-state">
+                    <i class="bi bi-file-earmark-text empty-state-icon"></i>
+                    <div class="empty-state-title">No files loaded</div>
+                    <div class="empty-state-sub">Drop one or more order files into the sidebar to view parsed order data.</div>
+                </div>
+            </div>
+        </main>
+
+    </div>
+</div>
+
+<script>
+// ── Parser ───────────────────────────────────────────────────────────
+const State = {
+    parsedOrders: [],
+    filesMeta: [],
+    rawLinesByOrder: new Map()  // orderNumber -> { h1, h3, d1: Map(sequence->line), h2: Map(type->line) }
+};
+
+// DOM refs
+const dropZone    = document.getElementById('dropZone');
+const fileInput   = document.getElementById('fileInput');
+const processing  = document.getElementById('processingIndicator');
+const statusAlert = document.getElementById('statusAlert');
+const statusIcon  = document.getElementById('statusIcon');
+const statusText  = document.getElementById('statusText');
+const statsSection= document.getElementById('statsSection');
+const statFiles   = document.getElementById('statFiles');
+const statOrders  = document.getElementById('statOrders');
+const statLines   = document.getElementById('statLines');
+const statQty     = document.getElementById('statQty');
+const downloadBtn = document.getElementById('downloadBtn');
+const clearBtn    = document.getElementById('clearBtn');
+const resultsArea = document.getElementById('resultsArea');
+
+// ── Events ───────────────────────────────────────────────────────────
+dropZone.addEventListener('click', () => fileInput.click());
+
+dropZone.addEventListener('dragover', e => {
+    e.preventDefault();
+    dropZone.classList.add('drag-over');
+});
+
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+
+dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.classList.remove('drag-over');
+    const files = Array.from(e.dataTransfer.files).filter(f => f.name.toLowerCase().endsWith('.txt'));
+    if (files.length) handleFiles(files);
+});
+
+fileInput.addEventListener('change', e => {
+    const files = Array.from(e.target.files);
+    if (files.length) handleFiles(files);
+});
+
+downloadBtn.addEventListener('click', downloadReport);
+clearBtn.addEventListener('click', clearAll);
+
+// ── File handling ────────────────────────────────────────────────────
+async function handleFiles(files) {
+    showProcessing(true);
+    hideStatus();
+
+    let newOrders = 0;
+    let errors = 0;
+
+    for (const file of files) {
+        try {
+            const text = await readFile(file);
+            const result = parseOrderFile(text, file.name);
+            if (result) {
+                State.parsedOrders.push(...result.orders);
+                State.filesMeta.push(result.meta);
+                // Merge raw line maps
+                result.rawLinesByOrder.forEach((v, k) => State.rawLinesByOrder.set(k, v));
+                newOrders += result.orders.length;
+            }
+        } catch (err) {
+            console.error('Parse error for', file.name, err);
+            errors++;
+        }
+    }
+
+    showProcessing(false);
+    fileInput.value = '';
+    renderResults();
+
+    if (errors > 0) {
+        showStatus('warning', `Loaded ${newOrders} order(s). ${errors} file(s) could not be parsed.`);
+    } else {
+        showStatus('success', `Parsed ${newOrders} order(s) from ${files.length} file(s).`);
+    }
+
+    const hasOrders = State.parsedOrders.length > 0;
+    downloadBtn.disabled = !hasOrders;
+    clearBtn.disabled    = false;
+}
+
+function readFile(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = e => resolve(e.target.result);
+        reader.onerror = () => reject(new Error('Could not read file'));
+        reader.readAsText(file, 'utf-8');
+    });
+}
+
+// ── Core parser ──────────────────────────────────────────────────────
+function parseOrderFile(text, filename) {
+    const lines = text.split(/\r?\n/).filter(l => l.length > 0);
+    if (!lines.length) return null;
+
+    let meta = { filename, supplier: '', batchNumber: '', fileDateTime: '', recordCount: 0 };
+    const orderMap = new Map();
+    const rawLinesByOrder = new Map(); // orderNumber -> { h1, h3, d1Lines: Map(seq->raw), h2Lines: Map(type->raw), hdrLine, eofLine }
+    let hdrLine = '';
+    let eofLine = '';
+
+    for (const rawLine of lines) {
+        const line = rawLine.replace(/\r$/, '');
+        const prefix = line.substring(0, 2);
+
+        if (line.startsWith('$$HDR')) {
+            meta = parseHDR(line, filename);
+            hdrLine = line;
+        } else if (line.startsWith('$$EOF')) {
+            meta.recordCount = parseInt(line.substring(33).trim()) || 0;
+            eofLine = line;
+        } else if (prefix === 'H1') {
+            const h1 = parseH1(line);
+            if (!orderMap.has(h1.orderNumber)) orderMap.set(h1.orderNumber, newOrder(h1));
+            else Object.assign(orderMap.get(h1.orderNumber), h1);
+            ensureRaw(rawLinesByOrder, h1.orderNumber).h1 = line;
+        } else if (prefix === 'H2') {
+            const h2 = parseH2(line);
+            if (!orderMap.has(h2.orderNumber)) orderMap.set(h2.orderNumber, newOrder({}));
+            const order = orderMap.get(h2.orderNumber);
+            if (!order.addresses) order.addresses = {};
+            const key = { ST: 'shipTo', BP: 'billTo', CS: 'consolidator' }[h2.addressType] || h2.addressType;
+            order.addresses[key] = h2;
+            ensureRaw(rawLinesByOrder, h2.orderNumber).h2Lines.set(h2.addressType, line);
+        } else if (prefix === 'H3') {
+            const h3 = parseH3(line);
+            if (orderMap.has(h3.orderNumber)) orderMap.get(h3.orderNumber).incoterm = h3.incoterm;
+            ensureRaw(rawLinesByOrder, h3.orderNumber).h3 = line;
+        } else if (prefix === 'D1') {
+            const d1 = parseD1(line);
+            if (!orderMap.has(d1.orderNumber)) orderMap.set(d1.orderNumber, newOrder({}));
+            orderMap.get(d1.orderNumber).lines.push(d1);
+            ensureRaw(rawLinesByOrder, d1.orderNumber).d1Lines.set(d1.sequence, line);
+        }
+    }
+
+    // Store hdr/eof on each order's raw bucket for export reconstruction
+    rawLinesByOrder.forEach(bucket => { bucket.hdrLine = hdrLine; bucket.eofLine = eofLine; });
+
+    const orders = Array.from(orderMap.values()).map(o => ({
+        ...o,
+        _meta: meta,
+        _edits: {}   // tracks which fields have been changed: { orderDate: true, ... }
+    }));
+    return { meta, orders, rawLinesByOrder };
+}
+
+function ensureRaw(map, orderNumber) {
+    if (!map.has(orderNumber)) map.set(orderNumber, { h1: '', h3: '', h2Lines: new Map(), d1Lines: new Map(), hdrLine: '', eofLine: '' });
+    return map.get(orderNumber);
+}
+
+function newOrder(h1) {
+    return { ...h1, addresses: {}, lines: [], incoterm: '', _edits: {} };
+}
+
+function parseHDR(line, filename) {
+    return {
+        filename,
+        supplier:     line.substring(6, 11).trim(),
+        batchNumber:  line.substring(12, 19).trim(),
+        fileDateTime: fmtDateTime(line.substring(20, 28).trim(), line.substring(28, 34).trim()),
+        recordCount:  0
+    };
+}
+
+function parseH1(line) {
+    return {
+        orderNumber: line.substring(2, 17).trim(),
+        orderDate:   fmtDate(line.substring(17, 25).trim()),
+        routingRef:  line.substring(57, 77).trim(),
+        carrier:     line.substring(92, 100).trim(),
+        fileFormat:  line.substring(195, 200).trim(),
+        currency:    line.substring(237, 240).trim()
+    };
+}
+
+function parseH2(line) {
+    const orderNumber = line.substring(2, 17).trim();
+    const addressType = line.substring(17, 19).trim();
+    const accountCode = line.substring(19, 29).trim();
+    const tokens = line.substring(29, 294).split(/  +/).map(t => t.trim()).filter(Boolean);
+    const name     = tokens[0] || '';
+    const address1 = tokens[1] || '';
+    const townToks = line.substring(290, 334).split(/  +/).map(t => t.trim()).filter(Boolean);
+    const town     = townToks[0] || '';
+    const postcode = townToks[1] || '';
+    const country  = line.length > 337 ? line.substring(335, 337).trim() : '';
+    const phone    = line.length > 338 ? line.substring(338, 358).trim() : '';
+    return { orderNumber, addressType, accountCode, name, address1, town, postcode, country, phone };
+}
+
+function parseH3(line) {
+    return { orderNumber: line.substring(2, 17).trim(), incoterm: line.substring(17, 20).trim() };
+}
+
+function parseD1(line) {
+    const orderNumber = line.substring(2, 17).trim();
+    const orderRef    = line.substring(17, 41).trim();
+    const sequence    = parseInt(line.substring(42, 47).trim()) || 0;
+    const priceRaw    = line.substring(50, 66).trim();
+    const lineTotal   = priceRaw ? parseInt(priceRaw) / 10000 : 0;
+    const qtyRaw      = line.substring(146, 156).trim();
+    const qtyOrdered  = qtyRaw ? Math.round(parseInt(qtyRaw) / 1000) : 0;
+    const qtyShipRaw  = line.substring(156, 166).trim();
+    const qtyToShip   = qtyShipRaw ? Math.round(parseInt(qtyShipRaw) / 1000) : 0;
+    const unitPrice   = qtyOrdered > 0 ? lineTotal / qtyOrdered : lineTotal;
+    // ISBN: try 978/979 prefix first, then positional field at 226-239 (PO_ format)
+    const isbnMatch = line.match(/97[89]\d{10}/);
+    let isbn = isbnMatch ? isbnMatch[0] : '';
+    if (!isbn) {
+        const pos = line.substring(226, 239).trim();
+        if (/^[1-9]\d{12}$/.test(pos)) isbn = pos;
+    }
+    return {
+        orderNumber, orderRef, sequence,
+        lineTotal:  parseFloat(lineTotal.toFixed(2)),
+        unitPrice:  parseFloat(unitPrice.toFixed(4)),
+        qtyOrdered, qtyToShip, isbn,
+        _edits: {}
+    };
+}
+
+// ── Rendering ────────────────────────────────────────────────────────
+function renderResults() {
+    const orders = State.parsedOrders;
+
+    if (orders.length > 0) {
+        const totalLines = orders.reduce((s, o) => s + (o.lines || []).length, 0);
+        const totalQty   = orders.reduce((s, o) => s + (o.lines || []).reduce((ls, l) => ls + l.qtyOrdered, 0), 0);
+        statFiles.textContent  = State.filesMeta.length;
+        statOrders.textContent = orders.length;
+        statLines.textContent  = totalLines;
+        statQty.textContent    = totalQty.toLocaleString();
+        statsSection.style.display = 'block';
+    } else {
+        statsSection.style.display = 'none';
+    }
+
+    if (orders.length === 0) {
+        document.getElementById('expandCollapseBar').style.display = 'none';
+        resultsArea.innerHTML = `
+            <div class="empty-state">
+                <i class="bi bi-file-earmark-text empty-state-icon"></i>
+                <div class="empty-state-title">No files loaded</div>
+                <div class="empty-state-sub">Drop one or more order files into the sidebar to view parsed order data.</div>
+            </div>`;
+        return;
+    }
+
+    const html = `<div class="orders-list">${orders.map((order, idx) => renderOrderCard(order, idx)).join('')}</div>`;
+    resultsArea.innerHTML = html;
+    document.getElementById('expandCollapseBar').style.display = 'flex';
+}
+
+// ── Search ────────────────────────────────────────────────────────────
+function searchOrders(query) {
+    const q = query.trim().toLowerCase();
+    const clearBtn = document.getElementById('searchClear');
+    const noResults = document.getElementById('searchNoResults');
+
+    clearBtn.classList.toggle('visible', q.length > 0);
+
+    const cards = document.querySelectorAll('.order-card');
+    let visibleCount = 0;
+
+    cards.forEach((card, idx) => {
+        const order = State.parsedOrders[idx];
+        if (!order) return;
+        const orderNum = (order.orderNumber || '').toLowerCase();
+        const matches = !q || orderNum.includes(q);
+
+        card.classList.toggle('search-hidden', !matches);
+        card.classList.toggle('search-highlight', matches && q.length > 0);
+
+        if (matches) {
+            visibleCount++;
+            if (q.length > 0 && !card.classList.contains('open')) card.classList.add('open');
+        }
+    });
+
+    noResults.classList.toggle('visible', q.length > 0 && visibleCount === 0);
+}
+
+function clearSearch() {
+    const input = document.getElementById('orderSearch');
+    input.value = '';
+    searchOrders('');
+    input.focus();
+}
+
+function renderOrderCard(order, idx) {
+    const linesCount = (order.lines || []).length;
+    const totalQty   = (order.lines || []).reduce((s, l) => s + l.qtyOrdered, 0);
+    const hasCs      = order.addresses && order.addresses.consolidator;
+
+    const badges = [
+        order.currency ? `<span class="badge badge-slate">${esc(order.currency)}</span>` : '',
+        order.carrier  ? `<span class="badge badge-blue">${esc(order.carrier)}</span>` : '',
+        order.incoterm ? `<span class="badge badge-amber">${esc(order.incoterm)}</span>` : '',
+        hasCs          ? `<span class="badge badge-purple">Via Consolidator</span>` : '',
+    ].filter(Boolean).join('');
+
+    const detail = renderOrderDetail(order, idx);
+
+    return `
+    <div class="order-card" id="card-${idx}">
+      <div class="order-card-header" onclick="toggleCard(${idx})">
+        <i class="bi bi-chevron-right order-chevron"></i>
+        <div class="order-header-main">
+          <span class="order-number">Order ${esc(order.orderNumber)}</span>
+          <span class="order-date">${esc(order.orderDate || '')}</span>
+          <div class="badge-row">${badges}</div>
+        </div>
+        <div class="order-header-meta">
+          <span class="meta-chip"><i class="bi bi-list-ul"></i>${linesCount} line${linesCount !== 1 ? 's' : ''}</span>
+          <span class="meta-chip"><i class="bi bi-boxes"></i>${totalQty.toLocaleString()}</span>
+        </div>
+      </div>
+      <div class="order-card-body" id="card-body-${idx}">${detail}</div>
+    </div>`;
+}
+
+function renderOrderDetail(order, idx) {
+    const addr = order.addresses || {};
+
+    const infoRows = [
+        ['Order Number',    order.orderNumber,  null,         null],
+        ['Order Date',      order.orderDate,     order,        'orderDate'],
+        ['Routing / PO Ref',order.routingRef,    order,        'routingRef'],
+        ['Carrier',         order.carrier,       order,        'carrier'],
+        ['Incoterm',        order.incoterm,      order,        'incoterm'],
+        ['Currency',        order.currency,      order,        'currency'],
+        ['File Format',     order.fileFormat,    null,         null],
+        ['Source File',     order._meta ? order._meta.filename : '', null, null],
+    ].filter(r => r[1]).map(([k, v]) =>
+        `<div class="detail-row">
+            <span class="detail-key">${esc(k)}</span>
+            <span class="detail-val">${esc(v)}</span>
+        </div>`
+    ).join('');
+
+    const addrBlock = (label, a) => {
+        if (!a) return '';
+        const acct = a.accountCode ? ` <span style="color:var(--text-faint);font-size:0.75rem;font-family:var(--mono)">(${esc(a.accountCode)})</span>` : '';
+        const lines = [
+            a.name     ? `<span>${esc(a.name)}</span>` : '',
+            a.address1 ? `<span>${esc(a.address1)}</span>` : '',
+            a.town     ? `<span>${esc(a.town)}${a.postcode ? ', ' + esc(a.postcode) : ''}</span>` : '',
+            a.country  ? `<span class="country-badge">${esc(a.country)}</span>` : '',
+            a.phone    ? `<span class="phone-line"><i class="bi bi-telephone" style="margin-right:0.3rem"></i>${esc(a.phone)}</span>` : '',
+        ].filter(Boolean).join('<br>');
+        return `<div class="detail-block">
+            <div class="detail-block-label">${label}${acct}</div>
+            <address class="detail-address mb-0">${lines}</address>
+          </div>`;
+    };
+
+    const shipTo = addrBlock('Ship-To', addr.shipTo);
+    const billTo = (addr.billTo && addr.billTo.name !== (addr.shipTo && addr.shipTo.name))
+        ? addrBlock('Bill-To', addr.billTo) : '';
+    const csBlock = addr.consolidator
+        ? `<div class="detail-block detail-block-full">${addrBlock('Consolidator', addr.consolidator).replace('<div class="detail-block">', '<div>').replace('</div>', '')}</div>`
+        : '';
+
+    const linesHtml = order.lines && order.lines.length > 0 ? `
+        <div class="lines-table-wrap">
+          <table class="lines-table">
+            <thead><tr>
+                <th>#</th><th>ISBN</th><th>Order Ref</th>
+                <th class="right">Unit Price</th>
+                <th class="right">Qty Ordered</th>
+                <th class="right">Qty to Ship</th>
+                <th class="right">Line Total</th>
+            </tr></thead>
+            <tbody>
+              ${order.lines.map(l => `<tr>
+                <td><span class="seq-num">${l.sequence}</span></td>
+                <td><span class="isbn-pill">${esc(l.isbn)}</span></td>
+                <td><span class="ref-text">${esc(l.orderRef)}</span></td>
+                <td class="right"><span class="price-val">£${l.unitPrice.toFixed(2)}</span></td>
+                <td class="right"><span class="qty-val">${l.qtyOrdered.toLocaleString()}</span></td>
+                <td class="right"><span class="qty-ship-val${l.qtyToShip > 0 ? ' dispatched' : ''}">${l.qtyToShip.toLocaleString()}</span></td>
+                <td class="right"><span class="total-val">£${l.lineTotal.toFixed(2)}</span></td>
+              </tr>`).join('')}
+            </tbody>
+            ${order.lines.length > 1 ? `<tfoot><tr>
+              <td colspan="4">Total</td>
+              <td class="right">${order.lines.reduce((s,l)=>s+l.qtyOrdered,0).toLocaleString()}</td>
+              <td class="right">${order.lines.reduce((s,l)=>s+l.qtyToShip,0).toLocaleString()}</td>
+              <td class="right">£${order.lines.reduce((s,l)=>s+l.lineTotal,0).toFixed(2)}</td>
+            </tr></tfoot>` : ''}
+          </table>
+        </div>` : '<p style="color:var(--text-faint);font-size:0.9rem">No order lines found.</p>';
+
+    return `
+    <div class="detail-grid">
+      <div class="detail-block">
+        <div class="detail-block-label">Order Information</div>
+        ${infoRows}
+      </div>
+      ${shipTo}${billTo}${csBlock}
+    </div>
+    ${linesHtml}`;
+}
+
+// ── Interactions ─────────────────────────────────────────────────────
+function toggleCard(idx) {
+    const card = document.getElementById(`card-${idx}`);
+    if (card) card.classList.toggle('open');
+}
+
+function expandAll() {
+    document.querySelectorAll('.order-card').forEach(c => c.classList.add('open'));
+}
+
+function collapseAll() {
+    document.querySelectorAll('.order-card').forEach(c => c.classList.remove('open'));
+}
+
+function clearAll() {
+    State.parsedOrders = [];
+    State.filesMeta = [];
+    State.rawLinesByOrder = new Map();
+    fileInput.value = '';
+    downloadBtn.disabled = true;
+    clearBtn.disabled    = true;
+    hideStatus();
+    const searchInput = document.getElementById('orderSearch');
+    if (searchInput) { searchInput.value = ''; }
+    document.getElementById('searchClear').classList.remove('visible');
+    document.getElementById('searchNoResults').classList.remove('visible');
+    document.getElementById('expandCollapseBar').style.display = 'none';
+    renderResults();
+}
+
+// ── Report ───────────────────────────────────────────────────────────
+function downloadReport() {
+    if (!State.parsedOrders.length) return;
+    const timestamp = new Date().toLocaleString();
+    const date = new Date().toISOString().split('T')[0];
+    const SEP = '='.repeat(70);
+    const DIV = '-'.repeat(70);
+
+    let r = `${SEP}\nORDER FILE REPORT\n${SEP}\n`;
+    r += `Generated:    ${timestamp}\n`;
+    r += `Files parsed: ${State.filesMeta.length}\n`;
+    r += `Orders:       ${State.parsedOrders.length}\n\n`;
+
+    State.parsedOrders.forEach((order, i) => {
+        r += `${DIV}\nORDER ${i + 1}: ${order.orderNumber}\n${DIV}\n`;
+        r += `Date:         ${order.orderDate || 'N/A'}\n`;
+        r += `Routing Ref:  ${order.routingRef || 'N/A'}\n`;
+        r += `Carrier:      ${order.carrier || 'N/A'}\n`;
+        r += `Incoterm:     ${order.incoterm || 'N/A'}\n`;
+        r += `Currency:     ${order.currency || 'N/A'}\n`;
+        r += `File Format:  ${order.fileFormat || 'N/A'}\n`;
+
+        const writeAddr = (label, a) => {
+            if (!a) return;
+            r += `\n${label}:\n`;
+            if (a.name)     r += `  ${a.name}\n`;
+            if (a.address1) r += `  ${a.address1}\n`;
+            if (a.town)     r += `  ${a.town}${a.postcode ? ', ' + a.postcode : ''}\n`;
+            if (a.country)  r += `  ${a.country}\n`;
+            if (a.phone)    r += `  Tel: ${a.phone}\n`;
+        };
+
+        writeAddr('Ship-To', order.addresses && order.addresses.shipTo);
+        writeAddr('Consolidator', order.addresses && order.addresses.consolidator);
+
+        if (order.lines && order.lines.length > 0) {
+            r += `\nOrder Lines:\n`;
+            r += `  ${'#'.padEnd(4)} ${'ISBN'.padEnd(14)} ${'Ref'.padEnd(22)} ${'Unit Price'.padStart(10)} ${'Qty'.padStart(8)} ${'Line Total'.padStart(12)}\n`;
+            let grand = 0;
+            order.lines.forEach(l => {
+                grand += l.lineTotal;
+                r += `  ${String(l.sequence).padEnd(4)} ${(l.isbn||'').padEnd(14)} ${(l.orderRef||'').padEnd(22)} ${('£'+l.unitPrice.toFixed(2)).padStart(10)} ${String(l.qtyOrdered).padStart(8)} ${('£'+l.lineTotal.toFixed(2)).padStart(12)}\n`;
+            });
+            const tq = order.lines.reduce((s,l)=>s+l.qtyOrdered,0);
+            r += `  ${''.padEnd(4)} ${''.padEnd(14)} ${'TOTAL'.padEnd(22)} ${''.padStart(10)} ${String(tq).padStart(8)} ${('£'+grand.toFixed(2)).padStart(12)}\n`;
+        }
+        r += '\n';
+    });
+
+    r += `${SEP}\nEnd of Report\n${SEP}\n`;
+
+    const blob = new Blob([r], { type: 'text/plain;charset=utf-8;' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url; a.download = `order_report_${date}.txt`;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a); URL.revokeObjectURL(url);
+}
+
+// ── UI helpers ───────────────────────────────────────────────────────
+function showProcessing(v) {
+    processing.classList.toggle('visible', v);
+}
+
+function showStatus(type, msg) {
+    const icons = { success: 'bi-check-circle-fill', warning: 'bi-exclamation-triangle-fill', error: 'bi-x-circle-fill' };
+    statusAlert.className = `status-alert ${type} visible`;
+    statusIcon.className  = `bi ${icons[type] || 'bi-info-circle-fill'}`;
+    statusIcon.style.flexShrink = '0';
+    statusIcon.style.marginTop  = '1px';
+    statusText.textContent = msg;
+}
+
+function hideStatus() {
+    statusAlert.className = 'status-alert';
+}
+
+function fmtDate(raw) {
+    if (!raw || raw.length < 8) return raw;
+    return `${raw.substring(0,4)}-${raw.substring(4,6)}-${raw.substring(6,8)}`;
+}
+
+function fmtDateTime(d, t) {
+    if (!d) return '';
+    const fd = fmtDate(d);
+    if (!t || t.length < 6) return fd;
+    return `${fd} ${t.substring(0,2)}:${t.substring(2,4)}:${t.substring(4,6)}`;
+}
+
+function esc(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+}
+</script>
+</body>
+</html>
